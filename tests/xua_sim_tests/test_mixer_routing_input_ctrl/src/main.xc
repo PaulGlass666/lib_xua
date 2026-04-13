@@ -29,7 +29,7 @@
 extern unsigned char mixSel[MAX_MIX_COUNT][MIX_INPUTS];
 
 /* From xua_ep0_uacreqs.xc */
-int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, chanend ?c_audioControl, chanend ?c_mix_ctl, chanend ?c_clk_ctl);
+int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, chanend ?c_audioControl, chanend ?c_mix_ctl, chanend ?c_clk_ctl, chanend ?c_con);
 
 /* From xua_endpoint0.c */
 void InitLocalMixerState();
@@ -103,7 +103,7 @@ void Fake_Endpoint0(chanend c_mix_ctl)
         g_src = src; /* This will get picked up by out implementation of XUD_GetBuffer */
 
         /* Call the function used by Endpoint0 to parse the control data and update the mixer output routing */
-        AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null);
+        AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null, null);
 
         /* Note, there is a race risk here. This could be resolved by adding a handshake to UpdateMixerOutputRouting() etc */
 
@@ -125,7 +125,7 @@ void Fake_Endpoint0(chanend c_mix_ctl)
 
                 /* Need to read back from each mixer individually */
                 sp.wValue = cn | ((i + 1)<< 8);
-                AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null);
+                AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null, null);
             }
         }
         else
@@ -133,7 +133,7 @@ void Fake_Endpoint0(chanend c_mix_ctl)
             assert(g_src == mixSel[cs-1][cn]);
 
             /* Test read back. Note, the checking is in our overridden implementation of XUD_SetBuffer_EpMax*/
-            AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null);
+            AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null, null);
         }
 
     }

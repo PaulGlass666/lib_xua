@@ -30,7 +30,7 @@ extern unsigned char channelMapAud[NUM_USB_CHAN_OUT];
 extern unsigned char channelMapUsb[NUM_USB_CHAN_IN];
 
 /* From xua_ep0_uacreqs.xc */
-int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, chanend ?c_audioControl, chanend ?c_mix_ctl, chanend ?c_clk_ctl);
+int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, chanend ?c_audioControl, chanend ?c_mix_ctl, chanend ?c_clk_ctl, chanend ?c_con);
 
 /* From xua_endpoint0.c */
 void InitLocalMixerState();
@@ -121,7 +121,7 @@ void Fake_Endpoint0(chanend c_mix_ctl)
         g_src = src; /* This will get picked up by out implementation of XUD_GetBuffer */
 
         /* Call the function used by Endpoint0() to parse the control data and update the mixer output routing */
-        AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null);
+        AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null, null);
 
         /* Note, there is a race risk here. This could be resolved by adding a handshake to UpdateMixerOutputRouting() etc */
 
@@ -156,7 +156,7 @@ void Fake_Endpoint0(chanend c_mix_ctl)
 
         /* Test read back. Note, the checking is our overridden implementation of XUD_SetBuffer_EpMax*/
         sp.bmRequestType.Direction = USB_BM_REQTYPE_DIRECTION_D2H;
-        AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null);
+        AudioClassRequests_2(ep0_out, ep0_in, sp, null, c_mix_ctl, null, null);
     }
 
     printstrln("PASS");

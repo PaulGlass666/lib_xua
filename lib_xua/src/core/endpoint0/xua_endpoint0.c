@@ -54,6 +54,8 @@
 #include "dsd_support.h"
 #endif
 
+#include "spi_registers.h"		// &&&&
+
 #ifdef __xua_user_ep0_decl_h_exists__
 #include "xua_user_ep0_decl.h"
 #endif
@@ -104,6 +106,10 @@ unsigned char mixSel[MAX_MIX_COUNT][MIX_INPUTS];
 #endif
 
 int min(int x, int y);
+
+// &&&&
+#define XUA_MAX_STR_LEN 32
+char g_product_str[XUA_MAX_STR_LEN];
 
 /* Global current device config var*/
 extern unsigned char g_currentConfig;
@@ -295,6 +301,9 @@ void concatenateAndCopyStrings(char* string1, char* string2, char* destBuffer, s
 
     debug_printf("concatenateAndCopyStrings() creates \"%s\"\n", destBuffer);
 }
+
+// &&&&
+#define SERIALNUM_DIGIT_CNT (4)
 
 void XUA_Endpoint0_setVendorStr(char* vendorStr)
 {
@@ -564,8 +573,9 @@ void XUA_Endpoint0_init(chanend c_ep0_out, chanend c_ep0_in, NULLABLE_RESOURCE(c
 #endif // 0 < HID_CONTROLS
 }
 
+// &&&&
 void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0_out, chanend c_ep0_in, NULLABLE_RESOURCE(chanend, c_aud_ctl),
-    chanend c_mix_ctl, chanend c_clk_ctl, CLIENT_INTERFACE(i_dfu, dfuInterface) VENDOR_REQUESTS_PARAMS_DEC_)
+    chanend c_mix_ctl, chanend c_clk_ctl, CLIENT_INTERFACE(i_dfu, dfuInterface) VENDOR_REQUESTS_PARAMS_DEC_, chanend c_con)
 {
  if (result == XUD_RES_OKAY)
     {
@@ -822,7 +832,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
 #if (XUA_AUDIO_CLASS_HS == 2)
                         if(g_curUsbSpeed == XUD_SPEED_HS)
                         {
-                            result = AudioClassRequests_2(ep0_out, ep0_in, &sp, c_aud_ctl, c_mix_ctl, c_clk_ctl);
+                            result = AudioClassRequests_2(ep0_out, ep0_in, &sp, c_aud_ctl, c_mix_ctl, c_clk_ctl, c_con);
                         }
                         else
 #endif
@@ -830,7 +840,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
 #if (XUA_AUDIO_CLASS_FS == 1)
                             result = AudioClassRequests_1(ep0_out, ep0_in, &sp, c_aud_ctl, c_mix_ctl, c_clk_ctl);
 #else
-                            result = AudioClassRequests_2(ep0_out, ep0_in, &sp, c_aud_ctl, c_mix_ctl, c_clk_ctl);
+                            result = AudioClassRequests_2(ep0_out, ep0_in, &sp, c_aud_ctl, c_mix_ctl, c_clk_ctl, c_con);
 #endif
                         }
 
@@ -975,7 +985,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
                 (unsigned char*)&devDesc_Audio1, sizeof(devDesc_Audio1),
                 cfgDesc_Audio1, sizeof(cfgDesc_Audio1),
                 (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *),
-                &sp, g_curUsbSpeed);
+                &sp, g_curUsbSpeed, c_con);		// &&&&
 #elif (XUA_AUDIO_CLASS_HS == 2) || (XUA_AUDIO_CLASS_FS == 2)
             /* Return Audio 2.0 Descriptors for high-speed and full-speed */
             /* Unfortunately we need to munge the descriptors a bit between full and high-speed */
@@ -1091,7 +1101,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
                 (unsigned char*)&cfgDesc_Audio2, sizeof(cfgDesc_Audio2),
                 null, 0,
                 null, 0,
-                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed);
+                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed, c_con);	// &&&&
 #elif (XUA_AUDIO_CLASS_FS == 1)
             /* Return Audio 1.0 Descriptors in FS, should never be in HS! */
              result = USB_StandardRequests(ep0_out, ep0_in,
@@ -1099,7 +1109,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
                 null, 0,
                 (unsigned char*)&devDesc_Audio1, sizeof(devDesc_Audio1),
                 cfgDesc_Audio1, sizeof(cfgDesc_Audio1),
-                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed);
+                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed, c_con);	// &&&&
 #else
             /* Return Audio 2.0 Descriptors with Null device as fallback */
             result = USB_StandardRequests(ep0_out, ep0_in,
@@ -1107,7 +1117,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
                 (unsigned char*)&cfgDesc_Audio2, sizeof(cfgDesc_Audio2),
                 devDesc_Null, sizeof(devDesc_Null),
                 cfgDesc_Null, sizeof(cfgDesc_Null),
-                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed);
+                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed, c_con);	// &&&&
 #endif
 #if XUA_DFU_EN
         }
@@ -1119,7 +1129,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
                 (unsigned char*)&DFUcfgDesc, sizeof(DFUcfgDesc),
                 null, 0, /* Used same descriptors for full and high-speed */
                 null, 0,
-                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed);
+                (char**)&g_strTable, sizeof(g_strTable)/sizeof(char *), &sp, g_curUsbSpeed, c_con);		// &&&&
         }
 #endif
     }
@@ -1207,7 +1217,7 @@ void XUA_Endpoint0_loop(XUD_Result_t result, USB_SetupPacket_t sp, chanend c_ep0
 
 /* Endpoint 0 function.  Handles all requests to the device */
 void XUA_Endpoint0(chanend c_ep0_out, chanend c_ep0_in, NULLABLE_RESOURCE(chanend, c_aud_ctl),
-    chanend c_mix_ctl, chanend c_clk_ctl, CLIENT_INTERFACE(i_dfu, dfuInterface) VENDOR_REQUESTS_PARAMS_DEC_)
+    chanend c_mix_ctl, chanend c_clk_ctl, CLIENT_INTERFACE(i_dfu, dfuInterface) VENDOR_REQUESTS_PARAMS_DEC_, chanend c_regs, chanend c_con)
 {
     USB_SetupPacket_t sp;
     XUA_Endpoint0_init(c_ep0_out, c_ep0_in, c_aud_ctl, c_mix_ctl, c_clk_ctl, dfuInterface VENDOR_REQUESTS_PARAMS_);
@@ -1216,7 +1226,7 @@ void XUA_Endpoint0(chanend c_ep0_out, chanend c_ep0_in, NULLABLE_RESOURCE(chanen
     {
         /* Returns XUD_RES_OKAY for success, XUD_RES_UPDATE for bus status update */
         XUD_Result_t result = USB_GetSetupPacket(ep0_out, ep0_in, &sp);
-        XUA_Endpoint0_loop(result, sp, c_ep0_out, c_ep0_in, c_aud_ctl, c_mix_ctl, c_clk_ctl, dfuInterface VENDOR_REQUESTS_PARAMS_);
+        XUA_Endpoint0_loop(result, sp, c_ep0_out, c_ep0_in, c_aud_ctl, c_mix_ctl, c_clk_ctl, dfuInterface VENDOR_REQUESTS_PARAMS_, c_con);
     }
 }
 

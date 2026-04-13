@@ -546,8 +546,9 @@ int main()
                 unsigned xudPwrCfg = (XUA_POWERMODE == XUA_POWERMODE_SELF) ? XUD_PWR_SELF : XUD_PWR_BUS;
 
                 /* USB interface core */
+                // &&&&
                 XUD_Main(c_xud_out, ENDPOINT_COUNT_OUT, c_xud_in, ENDPOINT_COUNT_IN,
-                         c_sof, epTypeTableOut, epTypeTableIn, XUA_USB_BUS_SPEED, xudPwrCfg);
+                         c_sof, epTypeTableOut, epTypeTableIn, XUA_USB_BUS_SPEED, xudPwrCfg, c_hold, c_dis);
             }
 
 #if (NUM_USB_CHAN_OUT > 0) || (NUM_USB_CHAN_IN > 0) || XUA_HID_ENABLED || defined(MIDI)
@@ -615,7 +616,8 @@ int main()
             /* Endpoint 0 Core */
             {
                 thread_speed();
-                XUA_Endpoint0( c_xud_out[0], c_xud_in[0], c_aud_ctl, c_mix_ctl, c_clk_ctl, dfuInterface VENDOR_REQUESTS_PARAMS_);
+                // &&&&
+                XUA_Endpoint0( c_xud_out[0], c_xud_in[0], c_aud_ctl, c_mix_ctl, c_clk_ctl, dfuInterface VENDOR_REQUESTS_PARAMS_, c_regs1, c_con);
             }
 
 #endif /* XUA_USB_EN */

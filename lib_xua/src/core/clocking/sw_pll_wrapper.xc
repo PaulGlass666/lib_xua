@@ -64,7 +64,8 @@
                 app_pll_div_reg[clkIndex],
                 app_pll_frac_reg[clkIndex],
                 sw_pll_sdm_ctrl_mid[clkIndex],
-                3000 /* PPM_RANGE (FOR PFD) Don't care for this API*/ );
+                3000, /* PPM_RANGE (FOR PFD) Don't care for this API*/
+                SW_PLL_TILE_1);
 
     /* Reset SDM too */
     sw_pll_init_sigma_delta(&sw_pll.sdm_state);

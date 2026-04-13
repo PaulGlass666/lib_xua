@@ -14,6 +14,7 @@
 #include "usbaudio10.h"
 #include "dbcalc.h"
 #include "xua_commands.h"
+#include "spi_registers.h"		// &&&&
 
 #define CS_XU_MIXSEL (0x06)
 
@@ -303,7 +304,7 @@ void UpdateMixerWeight(chanend c_mix_ctl, int mix, int index, unsigned mult)
  *              XUD_RES_RST for device reset
  *              else XUD_RES_ERR
  */
-int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, chanend ?c_aud_ctl, chanend ?c_mix_ctl, chanend ?c_clk_ctl
+int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, chanend ?c_aud_ctl, chanend ?c_mix_ctl, chanend ?c_clk_ctl, chanend ?c_con
 )
 {
     unsigned int buffer[32];
@@ -395,6 +396,12 @@ int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, c
                                         /* Wait for handshake back - i.e. PLL locked and clocks okay */
                                         chkct(c_aud_ctl, XS1_CT_END);
 
+                                        // &&&&
+                                		if(!isnull(c_con))
+                                		{
+                                        	c_con <: SET_CURRENT_SR;
+                                        	c_con <: newSampleRate;
+                                        }
                                     }
 
                                     /* Allow time for our feedback to stabilise*/
@@ -892,7 +899,20 @@ int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, c
 #ifndef SAMPLE_RATE_LIST
                                 int currentFreq44 = 11025;  //MIN_FREQ_44;
                                 int currentFreq48 = 8000;   //MIN_FREQ_48;
+
+							   // &&&&
+                               // **** here we make the reported available sample rates settable on-the-fly instead of being fixed
                                 unsigned maxFreq = MAX_FREQ;
+                                unsigned minFreq = MIN_FREQ;
+                                unsigned enabledRates = 0b00111111;    // table of available rates, 1 = available, 0 = not, x|x|192|176.4|96|88.2|48|44.1
+                                int nn = 0;
+
+                                // get the currently enable list of sample rates
+                                if(!isnull(c_con))
+                                {
+                                	c_con <: GET_SR_MASK;
+                               		c_con :> enabledRates;
+                                }
 
 #if (XUA_AUDIO_CLASS_FS == 2)
                                 unsigned usbSpeed;
@@ -903,6 +923,7 @@ int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, c
                                     maxFreq = MAX_FREQ_FS;
                                 }
 #endif
+#if 0   // &&&& we don't support low rates, thankyouverymuch
                                 /* Special case for some low sample rates */
                                 unsigned lowSampleRateList[] = {8000, 11025, 12000, 16000, 32000};
 
@@ -914,21 +935,23 @@ int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, c
                                         num_freqs++;
                                     }
                                 }
-
+#endif
                                 /* Just keep doubling for standard freqs >= 44.1/48kHz */
                                 currentFreq44 = 44100;
                                 currentFreq48 = 48000;
                                 while(1)
                                 {
-                                    if((currentFreq44 <= maxFreq) && (currentFreq44 >= MIN_FREQ))
+                                	// &&&&
+                                    if((currentFreq44 <= maxFreq) && (currentFreq44 >= minFreq) && (((1 << nn) & enabledRates) != 0))
                                     {
                                         storeFreq((buffer, unsigned char[]), i, currentFreq44);
                                         num_freqs++;
                                     }
 
                                     currentFreq44*=2;
+                                    nn++;
 
-                                    if((currentFreq48 <= maxFreq) && (currentFreq48 >= MIN_FREQ))
+                                    if((currentFreq48 <= maxFreq) && (((1 << nn) & enabledRates) != 0))
                                     {
                                         /* Note i passed byref here */
                                         storeFreq((buffer, unsigned char[]), i, currentFreq48);
@@ -937,6 +960,9 @@ int AudioClassRequests_2(XUD_ep ep0_out, XUD_ep ep0_in, USB_SetupPacket_t &sp, c
 
                                     currentFreq48*=2;
 
+                                    nn++;
+                                    if(nn > 6)
+                                        break;
                                     if((currentFreq48 > MAX_FREQ) && (currentFreq44 > MAX_FREQ))
                                     {
                                         break;
