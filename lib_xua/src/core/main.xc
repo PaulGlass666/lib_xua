@@ -158,7 +158,9 @@ on tile[XUA_AUDIO_IO_TILE_NUM] : port p_for_mclk_count_audio        = PORT_MCLK_
 #endif /* __XS3A__ */
 #endif
 
-#ifdef MIDI
+/* GW_MIDI_SPI_EN: no UART, so no MIDI ports and no clock block. See
+ * xua_conf_default.h. */
+#if defined(MIDI) && !GW_MIDI_SPI_EN
 on tile[XUA_MIDI_TILE_NUM] :  port p_midi_tx                        = PORT_MIDI_OUT;
 
 #if(MIDI_RX_PORT_WIDTH == 4)
@@ -166,10 +168,7 @@ on tile[XUA_MIDI_TILE_NUM] :  buffered in port:4 p_midi_rx          = PORT_MIDI_
 #elif(MIDI_RX_PORT_WIDTH == 1)
 on tile[XUA_MIDI_TILE_NUM] :  buffered in port:1 p_midi_rx          = PORT_MIDI_IN;
 #endif
-#endif
 
-
-#ifdef MIDI
 on tile[XUA_MIDI_TILE_NUM] : clock    clk_midi                      = CLKBLK_MIDI;
 #endif
 
@@ -548,7 +547,7 @@ int main()
                 /* USB interface core */
                 // &&&&
                 XUD_Main(c_xud_out, ENDPOINT_COUNT_OUT, c_xud_in, ENDPOINT_COUNT_IN,
-                         c_sof, epTypeTableOut, epTypeTableIn, XUA_USB_BUS_SPEED, xudPwrCfg, c_hold, c_dis);
+                         c_sof, epTypeTableOut, epTypeTableIn, XUA_USB_BUS_SPEED, xudPwrCfg, c_usb_ctl);
             }
 
 #if (NUM_USB_CHAN_OUT > 0) || (NUM_USB_CHAN_IN > 0) || XUA_HID_ENABLED || defined(MIDI)
@@ -617,7 +616,7 @@ int main()
             {
                 thread_speed();
                 // &&&&
-                XUA_Endpoint0( c_xud_out[0], c_xud_in[0], c_aud_ctl, c_mix_ctl, c_clk_ctl, dfuInterface VENDOR_REQUESTS_PARAMS_, c_regs1, c_con);
+                XUA_Endpoint0( c_xud_out[0], c_xud_in[0], c_aud_ctl, c_mix_ctl, c_clk_ctl, dfuInterface VENDOR_REQUESTS_PARAMS_, c_con);
             }
 
 #endif /* XUA_USB_EN */
@@ -673,7 +672,9 @@ int main()
         }
 #endif
 
-#ifdef MIDI
+/* GW_MIDI_SPI_EN: c_midi is still declared above, but the task on the other end
+ * of it comes from the application's xua_conf_tasks.h instead. */
+#if defined(MIDI) && !GW_MIDI_SPI_EN
         /* MIDI core */
         on tile[XUA_MIDI_TILE_NUM]:
         {

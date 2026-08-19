@@ -739,6 +739,26 @@
 #endif
 
 /**
+ * @brief Glassworks local: MIDI is carried over a host link of the
+ * application's own, not over a UART on the MIDI ports.
+ *
+ * Set this with MIDI=1 to keep the USB MIDI endpoints, descriptors and the
+ * c_midi channel, while dropping the MIDI ports, the UART clock block and the
+ * usb_midi() task. The application supplies its own task on c_midi; see
+ * gwa_usb_audio/src/extensions/gw_midi.xc, which bridges it to the host SPI
+ * link. Required on boards with no MIDI pins, where declaring PORT_MIDI_IN and
+ * PORT_MIDI_OUT would not even compile.
+ *
+ * This is a divergence from upstream lib_xua. Everything it touches is tagged
+ * GW_MIDI_SPI_EN so it can be found when rebasing.
+ *
+ * Default: 0 (Disabled)
+ */
+#if !defined(GW_MIDI_SPI_EN)
+#define GW_MIDI_SPI_EN               (0)
+#endif
+
+/**
  * @brief Use a Quad SPI (QSPI) flash part rather than a SPI flash
  *
  * Default: 1 (Enabled)

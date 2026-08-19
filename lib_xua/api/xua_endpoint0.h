@@ -39,7 +39,6 @@ void XUA_Endpoint0(chanend c_ep0_out,
                     VENDOR_REQUESTS_PARAMS_DEC_
 #endif
 					// &&&&
-                    , chanend c_regs        // channel used to read the SPI register values
                     , chanend c_con         // channel use to signal a connection event for interrupt
 );
 
