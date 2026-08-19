@@ -1,7 +1,8 @@
 // Copyright 2012-2026 XMOS LIMITED.
 // This Software is subject to the terms of the XMOS Public Licence: Version 1.
 #include "xua.h"
-#if (XUA_DFU_EN == 1)
+/* GW_SPI_DFU_EN: see xua_conf_default.h */
+#if (XUA_DFU_EN == 1) || (GW_SPI_DFU_EN == 1)
 #include "uac_hwresources.h"
 #include <xs1.h>
 #include <xclib.h>

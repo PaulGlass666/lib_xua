@@ -34,4 +34,11 @@ int flash_cmd_erase_all(void);
 int flash_cmd_init(void);
 int flash_cmd_deinit(void);
 
+/**
+ * GW_SPI_DFU_EN: returns non-zero if any call above failed since this was last
+ * called, and clears the latch. Several of the calls above cannot report
+ * failure through their return value, so this is the only way to find out.
+ */
+int flash_get_and_clear_error(void);
+
 #endif /*_flash_interface_h_*/

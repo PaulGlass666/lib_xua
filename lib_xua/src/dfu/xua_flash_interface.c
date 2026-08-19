@@ -9,7 +9,9 @@
 #include "xua.h"
 #include "dfu_types.h" // for _FLASH_PAGE_SIZE_BYTES and _NUM_DFU_PAGES_PER_FLASH_PAGE defines
 
-#if (XUA_DFU_EN == 1)
+/* GW_SPI_DFU_EN: also build this layer when the update transport is the
+ application's own rather than USB. See xua_conf_default.h. */
+#if (XUA_DFU_EN == 1) || (GW_SPI_DFU_EN == 1)
 
 /* Defines flash area to erase on first DFU download request received
  *
@@ -25,7 +27,22 @@
 #define FLASH_MAX_UPGRADE_SIZE (512 * 1024)
 #endif
 
-#define FLASH_ERROR() do {} while(0)
+/* GW_SPI_DFU_EN: upstream defines this as a no-op, so every flash failure below
+ * is swallowed and a caller cannot tell a completed update from a failed one.
+ * The SPI DFU engine reports success or failure back to the host, so it has to
+ * know. Latch the error here and let the caller drain it with
+ * flash_get_and_clear_error(). Harmless for the USB DFU path, which simply
+ * never calls it. See dfu_engine.xc. */
+static int flash_error_latched = 0;
+
+#define FLASH_ERROR() do { flash_error_latched = 1; } while(0)
+
+int flash_get_and_clear_error(void)
+{
+    int err = flash_error_latched;
+    flash_error_latched = 0;
+    return err;
+}
 
 static int flash_device_open = 0;
 static fl_BootImageInfo factory_image;
@@ -171,13 +188,18 @@ int flash_cmd_write_page_data(unsigned char *data)
 {
     unsigned char *page_data_ptr = &current_flash_page_data[current_flash_subpage_index * _DFU_TRANSFER_SIZE_BYTES];
 
+    /* GW_SPI_DFU_EN: both of these drop the caller's data on the floor. They
+     * have to latch, or a transfer that erased nothing first, or overran its
+     * page, would look like a clean update. */
     if (upgrade_image_valid)
     {
+        FLASH_ERROR();
         return 0;
     }
 
     if (current_flash_subpage_index >= _NUM_DFU_PAGES_PER_FLASH_PAGE)
     {
+        FLASH_ERROR();
         return 0;
     }
 

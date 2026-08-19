@@ -720,6 +720,25 @@
 #endif
 
 /**
+ * @brief Glassworks local: firmware update is carried over a host link of the
+ * application's own, not over USB.
+ *
+ * Set this with XUA_DFU_EN=0 to keep the boot flash layer and device_reboot()
+ * in the build while dropping the USB facing DFU interface, its descriptors and
+ * DFUHandler. The application supplies the transport and the update engine; see
+ * gwa_usb_audio/src/extensions/dfu_engine.xc, which drives the flash over the
+ * host SPI link.
+ *
+ * This is a divergence from upstream lib_xua. Everything it touches is tagged
+ * GW_SPI_DFU_EN so it can be found when rebasing.
+ *
+ * Default: 0 (Disabled)
+ */
+#if !defined(GW_SPI_DFU_EN)
+#define GW_SPI_DFU_EN                (0)
+#endif
+
+/**
  * @brief Use a Quad SPI (QSPI) flash part rather than a SPI flash
  *
  * Default: 1 (Enabled)
