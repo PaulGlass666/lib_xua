@@ -70,6 +70,48 @@ static inline void swap(xc_ptr &a, xc_ptr &b)
 static unsigned int g_midi_to_host_buffer_A[MIDI_USB_BUFFER_TO_HOST_SIZE/4];
 static unsigned int g_midi_to_host_buffer_B[MIDI_USB_BUFFER_TO_HOST_SIZE/4];
 static unsigned int g_midi_from_host_buffer[MAX_USB_MIDI_PACKET_SIZE/4];
+
+/* The most bytes one packet to the host may carry.
+ *
+ * A bulk packet may not exceed the endpoint's wMaxPacketSize: 512 in high
+ * speed, 64 in full speed (endpoint 0 rewrites the MIDI descriptors to 64 when
+ * the bus comes up in full speed). XUD sends whatever it is handed as ONE
+ * packet, so the collecting buffer -- MIDI_USB_BUFFER_TO_HOST_SIZE bytes --
+ * cannot simply be handed over whole: in full speed a hub or host truncates
+ * an over-long packet to 64 bytes, acknowledges it, and the rest of the burst
+ * is silently gone. That is one lost USB MIDI event per 4 bytes over, always
+ * the tail of whatever was being sent.
+ *
+ * One event (4 bytes) below the maximum, not the maximum itself: USB ends a
+ * bulk transfer on a packet shorter than wMaxPacketSize, and a host that
+ * reads more than one packet per request would hold a full-size packet until
+ * the next one arrived -- the tail of a reply then waits on whatever MIDI
+ * happens to come next. Keeping every packet short means each ends the
+ * transfer by itself, with no zero-length packet to send after a full one.
+ */
+static unsigned midi_to_host_packet_max(void)
+{
+    unsigned usbSpeed;
+    asm volatile("ldw %0, dp[g_curUsbSpeed]" : "=r"(usbSpeed));
+    return ((usbSpeed == XUD_SPEED_HS) ? 512 : 64) - 4;
+}
+
+/* Hand XUD the next packet of the buffer being sent to the host */
+static void midi_to_host_next_packet(XUD_ep ep, xc_ptr &ptr, int &remaining, int &waiting)
+{
+    int n = remaining;
+    int max = (int)midi_to_host_packet_max();
+
+    if (n > max)
+        n = max;
+
+    XUD_SetReady_InPtr(ep, ptr, n);
+    ptr += n;
+    remaining -= n;
+
+    /* Mark as waiting for host to poll us */
+    waiting = 1;
+}
 #endif
 
 unsigned int fb_clocks[4];
@@ -308,6 +350,19 @@ void XUA_Buffer_Ep(
     int midi_data_remaining_to_device = 0;
     int midi_data_collected_from_device = 0;
     int midi_waiting_on_send_to_host = 0;
+
+    /* What XUD has not yet been handed of the buffer being sent: a burst
+     * larger than one packet goes to the host as several packets */
+    xc_ptr midi_to_host_send_ptr = 0;
+    int midi_to_host_send_remaining = 0;
+
+    /* An event from the MIDI thread that arrived with the collecting buffer
+     * full. It is held, unacknowledged, until a swap frees the buffer: the
+     * one-outstanding handshake on c_midi is the only backpressure the MIDI
+     * thread has, and acknowledging an event we then drop -- which is what
+     * used to happen -- is what let a fast burst lose its tail. */
+    int midi_to_host_held = 0;
+    unsigned midi_to_host_held_event = 0;
 #endif
 
     /* Store EP's to globals so that decouple() can access them */
@@ -835,22 +890,38 @@ void XUA_Buffer_Ep(
                 }
                 break;
 
-            /* MIDI IN to host */
+            /* MIDI IN to host: a packet has gone. Next is the rest of the buffer
+             * being sent, if it did not fit one packet; then the buffer being
+             * collected, if anything arrived meanwhile; otherwise nothing. */
             case XUD_SetData_Select(c_midi_to_host, ep_midi_to_host, result):
 
-                /* The buffer has been sent to the host, so we can ack the midi thread */
-                if (midi_data_collected_from_device != 0)
+                if (midi_to_host_send_remaining > 0)
+                {
+                    midi_to_host_next_packet(ep_midi_to_host, midi_to_host_send_ptr,
+                                             midi_to_host_send_remaining, midi_waiting_on_send_to_host);
+                }
+                else if (midi_data_collected_from_device != 0)
                 {
                     /* Swap the collecting and sending buffer */
                     swap(midi_to_host_buffer_being_collected, midi_to_host_buffer_being_sent);
 
-                    /* Request to send packet */
-                    XUD_SetReady_InPtr(ep_midi_to_host, midi_to_host_buffer_being_sent, midi_data_collected_from_device);
-
-                    /* Mark as waiting for host to poll us */
-                    midi_waiting_on_send_to_host = 1;
+                    midi_to_host_send_ptr = midi_to_host_buffer_being_sent;
+                    midi_to_host_send_remaining = midi_data_collected_from_device;
                     /* Reset the collected data count */
                     midi_data_collected_from_device = 0;
+
+                    midi_to_host_next_packet(ep_midi_to_host, midi_to_host_send_ptr,
+                                             midi_to_host_send_remaining, midi_waiting_on_send_to_host);
+
+                    /* The buffer has room again: take the held event and let
+                     * the MIDI thread go on */
+                    if (midi_to_host_held)
+                    {
+                        write_via_xc_ptr(midi_to_host_buffer_being_collected, midi_to_host_held_event);
+                        midi_data_collected_from_device = 4;
+                        midi_to_host_held = 0;
+                        midi_send_ack(c_midi);
+                    }
                 }
                 else
                 {
@@ -896,8 +967,7 @@ void XUA_Buffer_Ep(
                 }
                 else
                 {
-                    /* The midi/uart thread has sent us some data - handshake back */
-                    midi_send_ack(c_midi);
+                    /* The midi/uart thread has sent us some data */
                     if (midi_data_collected_from_device < MIDI_USB_BUFFER_TO_HOST_SIZE)
                     {
                         /* There is room in the collecting buffer for the data */
@@ -905,10 +975,17 @@ void XUA_Buffer_Ep(
                         // Add data to the buffer
                         write_via_xc_ptr(p, datum);
                         midi_data_collected_from_device += 4;
+
+                        /* Handshake back, now that the data has a home */
+                        midi_send_ack(c_midi);
                     }
                     else
                     {
-                        // Too many events from device - drop
+                        /* No room. Hold the event and its ack until a swap frees
+                         * the buffer; the MIDI thread sends nothing more until
+                         * then. */
+                        midi_to_host_held_event = datum;
+                        midi_to_host_held = 1;
                     }
 
                     // If we are not sending data to the host then initiate it
@@ -916,10 +993,12 @@ void XUA_Buffer_Ep(
                     {
                         swap(midi_to_host_buffer_being_collected, midi_to_host_buffer_being_sent);
 
-                        // Signal other side to swap
-                        XUD_SetReady_InPtr(ep_midi_to_host, midi_to_host_buffer_being_sent, midi_data_collected_from_device);
+                        midi_to_host_send_ptr = midi_to_host_buffer_being_sent;
+                        midi_to_host_send_remaining = midi_data_collected_from_device;
                         midi_data_collected_from_device = 0;
-                        midi_waiting_on_send_to_host = 1;
+
+                        midi_to_host_next_packet(ep_midi_to_host, midi_to_host_send_ptr,
+                                                 midi_to_host_send_remaining, midi_waiting_on_send_to_host);
                     }
                 }
                 break;
